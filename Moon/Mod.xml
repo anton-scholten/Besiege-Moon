@@ -1,0 +1,42 @@
+<Mod>	
+	<Name>Moon</Name>
+	<Author>wizz6rd</Author>
+	<Version>0.1.0</Version>
+	
+	<Description>
+	Moons and Gravity Guns to play with forces!
+	</Description>
+	
+	<Icon name="MoonMod_icon" />
+	<Debug>false</Debug>
+	<MultiplayerCompatible>true</MultiplayerCompatible>
+
+	<Assemblies>
+		<Assembly path="MoonAssembly.dll" />
+	</Assemblies>
+	
+	<Blocks>
+		<Block path="GravityGun.xml" />
+		<Block path="MoonBlock.xml" />
+	</Blocks>
+	
+	<Resources>
+		<Texture name="MoonMod_icon" path="MoonMod.png" />
+	
+		<Texture name="GravityGun_text" path="GravityGun.png" />
+		<Mesh name="GravityGun_mesh" path="GravityGun.obj" />
+		
+		<Texture name="Planet_text" path="Planet.png" />
+		<Mesh name="Planet_mesh" path="Planet.obj" />
+	
+		<Texture name="Sphere_text" path="Sphere.png" />
+		<Mesh name="Sphere_mesh" path="Sphere.obj" />
+		
+		<Mesh name="ICO1" path="ICO.obj" />
+		<Mesh name="ICO2" path="ICO2.obj" />
+		<Texture name="ICO_tex" path="ICO_tex.png" />
+	</Resources>
+	
+<ID>6ff24dce-8e6a-47a1-a3f7-dacdd9963135</ID>
+
+</Mod>
