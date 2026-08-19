@@ -9,15 +9,12 @@ using UnityEngine.SceneManagement;
 namespace MoonMod
 {
     /// <summary>
-    /// Mod entry point: registers the two block modules, owns the list of live
+    /// Entry point. Registers the two block modules, owns the shared list of live
     /// gravity sources, and installs the console commands.
     /// </summary>
     public class Mod : ModEntryPoint
     {
-        /// <summary>
-        /// Whether altitude thins gravity, drag and ambient light. Off by default;
-        /// toggled with the <c>atmosphere</c> console command.
-        /// </summary>
+        /// <summary>Whether altitude thins gravity, drag and light. Set by the <c>atmosphere</c> command.</summary>
         public static bool atmoEffects = false;
 
         /// <summary>Altitude at which the atmosphere starts to thin.</summary>
@@ -27,18 +24,15 @@ namespace MoonMod
         public static float maxAltitude = 1000f;
 
         /// <summary>
-        /// Every live gravity source, keyed by its GameObject's instance id.
-        /// Written by the gravity guns and the moon blocks, read by every
-        /// <see cref="Moon"/> riding a rigidbody. One shared list is what lets a
-        /// single attraction loop serve both kinds of attractor.
+        /// Every live gravity source, keyed by its GameObject's instance id. One
+        /// shared list is what lets a single attraction loop serve both the gravity
+        /// gun's fired spheres and the moon blocks.
         /// </summary>
         public static Dictionary<string, GS_mapping> GravSpheres = new Dictionary<string, GS_mapping>();
 
-        // What the atmosphere overwrites is global -- gravity and the ambient
-        // lighting belong to the level, not to any one body -- so it is captured
-        // and restored here rather than by each Moon. The 2018 build never put any
-        // of it back: one flight above maxAltitude left the whole session at zero
-        // gravity and pitch dark, build area and later levels included.
+        // Gravity and ambient lighting belong to the level, not to any one body, so
+        // the atmosphere's edits are captured and undone here rather than by each
+        // Moon. See AGENTS.md: the 2018 build never undid them at all.
         private static bool atmoCaptured;
         private static Vector3 baseGravity = new Vector3(0f, -32.81f, 0f);
         private static Color baseAmbientLight;
@@ -48,6 +42,61 @@ namespace MoonMod
         public static Vector3 BaseGravity
         {
             get { return baseGravity; }
+        }
+
+        public override void OnLoad()
+        {
+            CustomModules.AddBlockModule<GravityGun, GravityGunBehaviour>("GravityGun", false);
+            CustomModules.AddBlockModule<MoonBlock, MoonBlockBehaviour>("MoonBlock", false);
+
+            // A body only feels the attraction if it carries a Moon, and bodies
+            // arrive by four routes. The immediate call covers the scene already up
+            // when the mod loads.
+            Events.OnBlockInit += BlockPlacedHandler;
+            Events.OnEntityPlaced += EntityPlacedHandler;
+            Events.OnLevelLoaded += LevelLoadedHandler;
+            SceneManager.sceneLoaded += SceneLoadedHandler;
+            AddMoonToEveryBody();
+
+            ModConsole.RegisterCommand("atmosphere", CH_active, "Activate or deactivate the effects of the atmosphere. ");
+            ModConsole.RegisterCommand("minAltitude", CH_minAltitude, "Altitude at which the gravity starts to decrease. ");
+            ModConsole.RegisterCommand("maxAltitude", CH_maxAltitude, "Altitude at which the gravity is 0. ");
+        }
+
+        /// <summary>Publishes one attractor. Replaces any entry under the same key rather than throwing.</summary>
+        public static void Register(GameObject go, float force, float minRadius, float maxRadius)
+        {
+            GS_mapping mapping = new GS_mapping();
+            mapping.gameObject = go;
+            mapping.force = force;
+            mapping.minRadius = minRadius;
+            mapping.maxRadius = maxRadius;
+            GravSpheres[go.GetInstanceID().ToString()] = mapping;
+        }
+
+        public static void Unregister(GameObject go)
+        {
+            GravSpheres.Remove(go.GetInstanceID().ToString());
+        }
+
+        /// <summary>The component of type T on <paramref name="go"/>, adding one if it has none.</summary>
+        public static T Ensure<T>(GameObject go) where T : Component
+        {
+            // Compared through Component so Unity's == overload is used; a bare type
+            // parameter would get a plain reference comparison instead.
+            T component = go.GetComponent<T>();
+            if ((Component)component == null)
+            {
+                component = go.AddComponent<T>();
+            }
+            return component;
+        }
+
+        /// <summary>Writes both shader colour slots: the additive shader reads _TintColor, the standard one _Color.</summary>
+        public static void SetTint(Renderer renderer, Color color)
+        {
+            renderer.material.SetColor("_Color", color);
+            renderer.material.SetColor("_TintColor", color);
         }
 
         /// <summary>Remembers the level's gravity and lighting, once, before the atmosphere first touches them.</summary>
@@ -63,7 +112,7 @@ namespace MoonMod
             atmoCaptured = true;
         }
 
-        /// <summary>Puts them back, at simulation stop, from whichever behaviour notices first.</summary>
+        /// <summary>Puts them back at simulation stop, from whichever behaviour notices first.</summary>
         public static void RestoreAtmosphere()
         {
             if (!atmoCaptured)
@@ -81,64 +130,42 @@ namespace MoonMod
             atmoCaptured = false;
         }
 
-        public override void OnLoad()
+        private static void AddMoon(GameObject go)
         {
-            CustomModules.AddBlockModule<GravityGun, GravityGunBehaviour>("GravityGun", false);
-            CustomModules.AddBlockModule<MoonBlock, MoonBlockBehaviour>("MoonBlock", false);
+            if (go.GetComponent<Moon>() == null)
+            {
+                go.AddComponent<Moon>();
+            }
+        }
 
-            // A rigidbody only feels the attraction if it carries a Moon, and they
-            // arrive by four routes: a block placed in the build area, a level
-            // entity, a level being loaded, and a scene change. The immediate call
-            // covers the scene that is already up when the mod loads.
-            Events.OnBlockInit += BlockPlacedHandler;
-            Events.OnEntityPlaced += EntityPlacedHandler;
-            Events.OnLevelLoaded += LevelLoadedHandlers;
-            SceneManager.sceneLoaded += SceneLoadedHandlers;
-            SceneLoadedHandlers(SceneManager.GetActiveScene(), LoadSceneMode.Additive);
-
-            ModConsole.RegisterCommand("atmosphere", CH_active, "Activate or deactivate the effects of the atmosphere. ");
-            ModConsole.RegisterCommand("minAltitude", CH_minAltitude, "Altitude at which the gravity starts to decrease. ");
-            ModConsole.RegisterCommand("maxAltitude", CH_maxAltitude, "Altitude at which the gravity is 0. ");
+        private static void AddMoonToEveryBody()
+        {
+            Rigidbody[] bodies = Object.FindObjectsOfType<Rigidbody>();
+            foreach (Rigidbody body in bodies)
+            {
+                AddMoon(body.gameObject);
+            }
         }
 
         private void BlockPlacedHandler(Block block)
         {
-            if (block.GameObject.GetComponent<Moon>() == null)
-            {
-                block.GameObject.AddComponent<Moon>();
-            }
+            AddMoon(block.GameObject);
         }
 
         private void EntityPlacedHandler(Entity entity)
         {
-            if (entity.GameObject.GetComponent<Moon>() == null)
-            {
-                entity.GameObject.AddComponent<Moon>();
-            }
+            AddMoon(entity.GameObject);
         }
 
-        private void LevelLoadedHandlers(Level level)
+        // Two handlers rather than one because they are two delegate types.
+        private void LevelLoadedHandler(Level level)
         {
-            Rigidbody[] bodies = Object.FindObjectsOfType<Rigidbody>();
-            foreach (Rigidbody body in bodies)
-            {
-                if (body.gameObject.GetComponent<Moon>() == null)
-                {
-                    body.gameObject.AddComponent<Moon>();
-                }
-            }
+            AddMoonToEveryBody();
         }
 
-        private void SceneLoadedHandlers(Scene scene, LoadSceneMode mode)
+        private void SceneLoadedHandler(Scene scene, LoadSceneMode mode)
         {
-            Rigidbody[] bodies = Object.FindObjectsOfType<Rigidbody>();
-            foreach (Rigidbody body in bodies)
-            {
-                if (body.gameObject.GetComponent<Moon>() == null)
-                {
-                    body.gameObject.AddComponent<Moon>();
-                }
-            }
+            AddMoonToEveryBody();
         }
 
         private void CH_active(string[] values)

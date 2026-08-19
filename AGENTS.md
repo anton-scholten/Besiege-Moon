@@ -18,6 +18,9 @@ Moon/MoonBlock.xml          the moon block: mesh, colliders, module
 Moon/MoonAssembly.dll       built by tools/build.sh (checked in, the game loads it)
 Moon/Resources/             the meshes and textures both blocks use
 Moon/MoonScripts/*.cs       mod source; not read by the game
+                            Mod.cs also holds the shared statics: the attractor
+                            list, the atmosphere capture, and the small helpers
+                            (Ensure/Register/SetTint) both behaviours use
 tools/build.sh              compiles with Besiege's own compiler
 tools/verify-build.sh       the check to run after editing any .cs
 tools/install.sh            builds and installs into the game
@@ -178,7 +181,7 @@ base game's own enum — a modded block can never be in it, so
 `SetupTooltipButton` logs and returns. Every modded block does this. The cost is
 one log line and no hover tooltip on the block's toolbar button.
 
-`Mod.LevelLoadedHandlers` and `SceneLoadedHandlers` are the same body twice.
-They are separate methods because they are separate delegate types
-(`Action<Level>` and `UnityAction<Scene, LoadSceneMode>`); the duplication is in
-the original and is not worth a shared helper.
+`Mod.LevelLoadedHandler` and `SceneLoadedHandler` are one line each and identical.
+They stay separate methods because they are separate delegate types
+(`Action<Level>` and `UnityAction<Scene, LoadSceneMode>`); both just call
+`AddMoonToEveryBody`.

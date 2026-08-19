@@ -6,8 +6,8 @@ using UnityEngine;
 namespace MoonMod
 {
     /// <summary>
-    /// The Gravity Gun block: fires a glowing sphere that becomes a gravity source
-    /// for as long as it lives, then fades out and is removed.
+    /// Fires a glowing sphere that becomes a gravity source for its lifetime, then
+    /// fades out and is removed.
     /// </summary>
     public class GravityGunBehaviour : BlockModuleBehaviour<GravityGun>
     {
@@ -22,12 +22,6 @@ namespace MoonMod
 
         /// <summary>The inactive template every shot is instantiated from.</summary>
         private GameObject GravitySphere;
-
-        private Shader AdditiveShader;
-        private Texture SphereText;
-        private Mesh SphereMesh;
-        private Rigidbody RigidB;
-        private MeshFilter MeshF;
         private MeshRenderer MeshR;
 
         private bool hasStarted;
@@ -44,54 +38,35 @@ namespace MoonMod
             SphereLife = AddSliderUnclamped("Lifetime", "LifetimeKey", 2f, 0f, 10f);
             SphereActivationDelay = AddSliderUnclamped("Activation delay", "ActivationDelayKey", 0.5f, 0f, 5f);
 
-            AdditiveShader = GameMaterials.Shaders.Entities.VertexLit;
-            SphereText = ModResource.GetTexture("ICO_tex");
-            SphereMesh = ModResource.GetMesh("ICO1");
-
-            GravitySphere = new GameObject();
-            GravitySphere.transform.name = "GravitySphereMain";
+            GravitySphere = new GameObject("GravitySphereMain");
             GravitySphere.transform.parent = gameObject.transform;
             GravitySphere.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
             GravitySphere.SetActive(false);
 
-            RigidB = GravitySphere.GetComponent<Rigidbody>();
-            if (RigidB == null)
-            {
-                RigidB = GravitySphere.AddComponent<Rigidbody>();
-            }
-            RigidB.useGravity = false;
-            RigidB.mass = 0.01f;
-            RigidB.interpolation = RigidbodyInterpolation.Interpolate;
+            Rigidbody rb = Mod.Ensure<Rigidbody>(GravitySphere);
+            rb.useGravity = false;
+            rb.mass = 0.01f;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
 
-            MeshF = GravitySphere.GetComponent<MeshFilter>();
-            if (MeshF == null)
-            {
-                MeshF = GravitySphere.AddComponent<MeshFilter>();
-            }
-            MeshF.mesh = SphereMesh;
+            Mod.Ensure<MeshFilter>(GravitySphere).mesh = ModResource.GetMesh("ICO1");
 
-            MeshR = GravitySphere.GetComponent<MeshRenderer>();
-            if (MeshR == null)
-            {
-                MeshR = GravitySphere.AddComponent<MeshRenderer>();
-            }
-            MeshR.material.mainTexture = SphereText;
-            MeshR.material.shader = AdditiveShader;
+            MeshR = Mod.Ensure<MeshRenderer>(GravitySphere);
+            MeshR.material.mainTexture = ModResource.GetTexture("ICO_tex");
+            MeshR.material.shader = GameMaterials.Shaders.Entities.VertexLit;
 
             SphereColor.ValueChanged += SphereColor_ValueChanged;
         }
 
-        /// <summary>Recolours the template, at full alpha; the fades write alpha themselves.</summary>
+        /// <summary>Recolours the template at full alpha; the fades write alpha themselves.</summary>
         private void SphereColor_ValueChanged(Color col)
         {
-            MeshR.material.SetColor("_Color", new Color(col.r, col.g, col.b, 1f));
-            MeshR.material.SetColor("_TintColor", new Color(col.r, col.g, col.b, 1f));
+            Mod.SetTint(MeshR, new Color(col.r, col.g, col.b, 1f));
         }
 
         public override void OnSimulateStart()
         {
-            // Besiege keeps this behaviour between runs, so the settle counter has
-            // to be wound back or the second run reads the mapper on frame one.
+            // Besiege keeps this behaviour between runs; without this the second run
+            // reads the mapper on frame one.
             hasStarted = false;
             startFrames = 0;
         }
@@ -104,19 +79,15 @@ namespace MoonMod
 
         public override void SimulateUpdateAlways()
         {
-            // The mapper's values are not settled at the first simulated frame, so
-            // shooting is held off for three of them.
+            // The mapper's values are not settled at the first simulated frame.
             if (!hasStarted)
             {
-                if (startFrames == 3)
-                {
-                    hasStarted = true;
-                }
-                else
+                if (startFrames != 3)
                 {
                     startFrames++;
                     return;
                 }
+                hasStarted = true;
             }
 
             if (ShootKey.IsPressed)
@@ -125,59 +96,46 @@ namespace MoonMod
                 shot.transform.localPosition = Vector3.forward;
                 shot.transform.name = "GravitySphereClone";
                 shot.SetActive(true);
-                Rigidbody shotRB = shot.GetComponent<Rigidbody>();
-                shotRB.AddForce(SphereSpeed.Value / 10f * gameObject.transform.forward, ForceMode.Impulse);
+                shot.GetComponent<Rigidbody>().AddForce(
+                    SphereSpeed.Value / 10f * gameObject.transform.forward, ForceMode.Impulse);
                 StartCoroutine(DeleteThis(shot, SphereLife.Value, SphereActivationDelay.Value, 0f));
             }
         }
 
         /// <summary>
-        /// The whole life of one shot: fade in over <paramref name="delay"/>, act as
-        /// a gravity source for <paramref name="time"/>, fade out over the last
-        /// quarter of that, then unregister and destroy itself.
+        /// One shot's whole life: fade in over <paramref name="delay"/> pulling
+        /// nothing, act as a gravity source for <paramref name="time"/>, fade out
+        /// over its last quarter, then unregister and destroy itself.
         /// </summary>
         private IEnumerator DeleteThis(GameObject GO, float time, float delay, float index)
         {
             MeshRenderer MR = GO.GetComponent<MeshRenderer>();
             Color col = MR.material.GetColor("_TintColor");
-            Color supercolor = col;
+            Color faded = col;
 
-            // Fade in. The sphere pulls nothing while this runs, which is what the
-            // Activation delay slider buys: time to get the shot clear of the machine.
             while (index < 1f)
             {
-                supercolor.a = index;
-                MR.material.SetColor("_Color", supercolor);
-                MR.material.SetColor("_TintColor", supercolor);
+                faded.a = index;
+                Mod.SetTint(MR, faded);
                 index += Time.deltaTime / delay;
                 yield return null;
             }
 
-            GS_mapping Stdby = new GS_mapping
-            {
-                gameObject = GO,
-                force = SphereForce.Value,
-                minRadius = SphereMinRadius.Value,
-                maxRadius = SphereMaxRadius.Value
-            };
-            // Indexer, not Add: a duplicate key would throw out of the
-            // coroutine and leave the shot registered but never cleaned up.
-            Mod.GravSpheres[GO.GetInstanceID().ToString()] = Stdby;
+            Mod.Register(GO, SphereForce.Value, SphereMinRadius.Value, SphereMaxRadius.Value);
 
             index = 0f;
             while (index < 1f)
             {
                 if (index > 0.75f)
                 {
-                    supercolor = Color.Lerp(col, new Color(col.r, col.g, col.b, 0f), (index - 0.75f) * 4f);
-                    MR.material.SetColor("_Color", supercolor);
-                    MR.material.SetColor("_TintColor", supercolor);
+                    Mod.SetTint(MR, Color.Lerp(col, new Color(col.r, col.g, col.b, 0f),
+                        (index - 0.75f) * 4f));
                 }
                 index += Time.deltaTime / time;
                 yield return null;
             }
 
-            Mod.GravSpheres.Remove(GO.GetInstanceID().ToString());
+            Mod.Unregister(GO);
             Destroy(GO);
         }
     }
