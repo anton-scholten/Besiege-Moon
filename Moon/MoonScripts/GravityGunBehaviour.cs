@@ -90,7 +90,13 @@ namespace MoonMod
                 hasStarted = true;
             }
 
-            if (ShootKey.IsPressed)
+            // Read the emulated edge as well as the keyboard, which is what lets a
+            // variable drive the block in place of a key, the way the game's own
+            // cannon does it. Called unconditionally rather than short-circuited:
+            // the edge comes from a snapshot MKey advances once per fixed step, and
+            // one left uncalled goes stale.
+            bool emulated = ShootKey.EmulationPressed();
+            if (ShootKey.IsPressed || emulated)
             {
                 GameObject shot = (GameObject)Instantiate(GravitySphere, gameObject.transform);
                 shot.transform.localPosition = Vector3.forward;

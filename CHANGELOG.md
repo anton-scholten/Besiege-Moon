@@ -20,6 +20,8 @@ with that version load and behave as they did, apart from the fixes.
   scales from whatever the level actually has.
 - Crossing an altitude boundary wrote one console line per rigidbody in the
   level. The log is gone.
+- The gravity gun could only be fired from the keyboard. Its **Shoot** key now
+  responds to Besiege's variables the same way the base-game cannon's does.
 - Neither block could be built on: they declared no adding points, so anything
   attached to one landed inside it and intersected. Both now carry the standard
   five (top and four sides).

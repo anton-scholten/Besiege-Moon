@@ -107,6 +107,23 @@ being cut off at the edge, and inside `minRadius` the pull is flat so a body tha
 falls all the way in is not flung back out. Do not "correct" it to Newtonian
 gravity; the block is a toy and the shape is the point.
 
+**Variables reach a block through its keys and nowhere else.** `MKey` carries the
+whole feature — `Emulating`, `EmulationPressed`, `EmulationHeld(includePressed)`,
+`EmulationReleased`. `MSlider`, `MToggle`, `MMenu` and `MapperType` have nothing
+variable-related on them at all. So any key this mod reads must be read as
+`IsPressed || EmulationPressed()` (or `IsHeld || EmulationHeld(true)`), the way
+`Modding.Modules.Official.ShootingModuleBehaviour` reads the cannon's fire key, or
+a variable cannot drive it. The edge methods sit on a snapshot `MKey` advances once
+per fixed step, so polling is cheap but leaving one uncalled lets it go stale —
+call it unconditionally rather than behind a `||` short-circuit.
+
+`ShootKey` on the gravity gun is the mod's only `MKey`, and **the moon block is
+deliberately keyless.** It is a static attractor: you place it, set its radii, and
+it pulls for the whole run. There is no moment to trigger, so there is nothing for
+a variable to drive. Adding a key purely to make the block "support variables"
+would be a new feature with a save-compat cost, not a fix — decided against, so do
+not add one without asking.
+
 ## What was wrong with it
 
 The 2018 assembly was recovered faithfully, and then five real defects in it were
@@ -165,6 +182,10 @@ Setting that attribute false does **not** stop the block attaching to a parent.
 The base *connection* is the `TriggerForJoint` child and the `ConfigurableJoint`,
 and `SetupAddingPoints` drives those from `BasePoint.Sticky`, which is a separate
 element and still `true`.
+
+**A variable could not fire the gravity gun.** `SimulateUpdateAlways` read
+`ShootKey.IsPressed` alone, which is the keyboard only. It now also reads
+`EmulationPressed()`, per the rule above.
 
 **`GravSpheres.Add` could throw.** `Dictionary.Add` raises `ArgumentException` on
 a duplicate key, and it was reached from inside a coroutine (`DeleteThis`) and
